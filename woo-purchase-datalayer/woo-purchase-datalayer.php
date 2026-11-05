@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Woo Purchase DataLayer
  * Description: Pushes a GA4 "purchase" event to the GTM dataLayer on the WooCommerce order-received page.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires Plugins: woocommerce
  * License: GPL-2.0-or-later
  */
@@ -11,13 +11,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+define( 'WPDL_PURCHASE_TRACKED_META', '_wpdl_purchase_event_sent' );
+
 add_action( 'woocommerce_thankyou', 'wpdl_push_purchase_event', 20 );
 
 /**
  * Output the purchase event for GTM.
  *
- * Known issue: the event fires again every time the customer reloads or
- * revisits the thank-you page, so GA4 records duplicate purchases.
+ * A per-order meta flag guarantees the event is emitted at most once per
+ * order, even when the thank-you page is reloaded or revisited.
  */
 function wpdl_push_purchase_event( $order_id ) {
 	if ( ! $order_id ) {
@@ -26,6 +28,14 @@ function wpdl_push_purchase_event( $order_id ) {
 
 	$order = wc_get_order( $order_id );
 	if ( ! $order ) {
+		return;
+	}
+
+	if ( $order->has_status( 'failed' ) ) {
+		return;
+	}
+
+	if ( $order->get_meta( WPDL_PURCHASE_TRACKED_META ) ) {
 		return;
 	}
 
@@ -58,4 +68,7 @@ function wpdl_push_purchase_event( $order_id ) {
 		window.dataLayer.push(<?php echo wp_json_encode( $event ); ?>);
 	</script>
 	<?php
+
+	$order->update_meta_data( WPDL_PURCHASE_TRACKED_META, gmdate( 'c' ) );
+	$order->save();
 }
